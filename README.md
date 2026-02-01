@@ -1,4 +1,4 @@
-# Studocu Helper
+# Studocu Tools
 
 **Tiện ích trình duyệt giúp tải xuống tài liệu từ Studocu dưới dạng PDF**
 
