@@ -1,47 +1,6 @@
-// TODO: cache and css stuff
-async function fetchDocument() {
-    const nextData = JSON.parse(__NEXT_DATA__.innerText);
-    const { documentAccess, pageDataList } = nextData.props.pageProps;
-    const { url, objectKey, signedQueryParams } = documentAccess;
-    const params = signedQueryParams.global;
-
-    const pageContainer = document.createElement('div');
-    pageContainer.id = 'page-container';
-
-    const updateProgress = (progress) => document.querySelectorAll('.pdf-download-btn')
-        .forEach(downloadButton => downloadButton.textContent = progress);
-
-    const pageCount = pageDataList.length;
-    let pageLoaded = 0;
-
-    updateProgress(`Loading pages: 0/${pageCount}`);
-
-    for (const pageData of pageDataList) {
-        const { pageNumber, pageHtmlWrapper } = pageData;
-        let { pageHtml } = pageData;
-
-        if (!pageHtml) {
-            const pageUrl = `${url}${objectKey}${pageNumber}.page${params}`;
-            const pageResponse = await fetch(pageUrl);
-            pageHtml = await pageResponse.text();
-
-            const backgroundFile = `bg${pageNumber.toString(16)}.png`;
-            const backgroundUrl = `${url}${backgroundFile}${params}`
-            pageHtml = pageHtml.replace(backgroundFile, backgroundUrl);
-        }
-
-        pageHtml = `${pageHtmlWrapper}${pageHtml}</div>`;
-        pageContainer.insertAdjacentHTML('beforeend', pageHtml);
-
-        updateProgress(`Loading pages: ${++pageLoaded}/${pageCount}`);
-    }
-
-    updateProgress('Downloading document...');
-
-    const styleElement = document.createElement('style');
-    styleElement.textContent = `
-body > *:not(.p2hv) { 
-    display: none !important; 
+const styleElement = document.createElement('style');
+styleElement.textContent = `body > *:not(.p2hv) {
+    display: none !important;
 }
 @media print {
     @page {
@@ -62,41 +21,63 @@ body > *:not(.p2hv) {
         break-after: always;
         border: none;
     }
-}
-`;
-    document.head.append(styleElement);
+}`;
+const viewerElement = document.createElement('div');
+viewerElement.classList.add('p2hv');
 
-    const viewerElement = document.createElement('div');
-    viewerElement.classList.add('p2hv');
-    viewerElement.append(pageContainer);
+let downloadButton;
 
-    document.body.append(viewerElement);
+async function fetchDocument() {
+    downloadButton.textContent = 'Fetching document...';
 
-    for (const pageElement of pageContainer.children) {
-        const imageElement = pageElement.querySelector('img.bi');
-        if (!imageElement) {
-            continue;
+    const nextData = JSON.parse(__NEXT_DATA__.innerText);
+    const { documentAccess, pageDataList } = nextData.props.pageProps;
+    const { url, objectKey, signedQueryParams } = documentAccess;
+    const params = signedQueryParams.global;
+
+    const pageContainer = document.createElement('div');
+    pageContainer.id = 'page-container';
+
+    const pageHtmls = await Promise.all(pageDataList.map(async ({ pageNumber, pageHtml, pageHtmlWrapper }) => {
+        if (!pageHtml) {
+            const pageUrl = `${url}${objectKey}${pageNumber}.page${params}`;
+            const pageResponse = await fetch(pageUrl);
+            pageHtml = await pageResponse.text();
+
+            const backgroundFile = `bg${pageNumber.toString(16)}.png`;
+            const backgroundUrl = `${url}${backgroundFile}${params}`
+            pageHtml = pageHtml.replaceAll(backgroundFile, backgroundUrl);
         }
 
-        await new Promise(resolve => {
-            if (imageElement.complete && imageElement.naturalWidth > 0) {
-                resolve();
-                return;
-            }
+        return `${pageHtmlWrapper}${pageHtml}</div>`;
+    }));
+    pageContainer.innerHTML = pageHtmls.join('');
+    viewerElement.append(pageContainer);
 
-            imageElement.addEventListener('load', resolve, { once: true });
-            imageElement.addEventListener('error', resolve, { once: true });
-        });
+    const pageImages = [...pageContainer.querySelectorAll('img.bi')];
+    const pageCount = pageImages.length;
+    let pageLoaded = 0;
+
+    downloadButton.textContent = `Loading pages: 0/${pageCount}`;
+
+    await Promise.all(pageImages.map(imageElement => imageElement.decode?.()
+        .then(() => downloadButton.textContent = `Loading pages: ${++pageLoaded}/${pageCount}`)
+        .catch(() => {})
+    ));
+}
+
+async function downloadPDF() {
+    if (!viewerElement.hasChildNodes()) {
+        await fetchDocument();
     }
+
+    document.head.append(styleElement);
+    document.body.append(viewerElement);
 
     await document.fonts?.ready;
     await new Promise(r => requestAnimationFrame(r));
 
     window.print();
-    window.addEventListener("afterprint", () => {
-        styleElement.remove();
-        viewerElement.remove();
-    });
 }
 
 function createDownloadButton() {
@@ -105,21 +86,29 @@ function createDownloadButton() {
         return;
     }
 
-    const originalButton = topbar.querySelector('button[aria-label^="Download"]');
-    if (!originalButton) {
-        return;
+    if (!downloadButton) {
+        const originalButton = topbar.querySelector('button[aria-label^="Download"]');
+        if (!originalButton) {
+            return;
+        }
+
+        downloadButton = originalButton.cloneNode(true);
+        downloadButton.classList.add('pdf-download-btn');
+        downloadButton.textContent = 'Download as PDF';
+
+        downloadButton.addEventListener('click', downloadPDF);
     }
 
-    const button = originalButton.cloneNode(true);
-    button.classList.add('pdf-download-btn');
-    button.textContent = 'Download as PDF';
-
-    button.addEventListener('click', fetchDocument);
-
-    topbar.prepend(button);
+    topbar.prepend(downloadButton);
 }
 
 window.addEventListener('load', () => {
     const observer = new MutationObserver(createDownloadButton);
     observer.observe(document.body, { childList: true, subtree: true });
+});
+
+window.addEventListener("afterprint", () => {
+    styleElement.remove();
+    viewerElement.remove();
+    downloadButton.textContent = 'Download as PDF';
 });
