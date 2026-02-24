@@ -93,8 +93,10 @@ body > *:not(.p2hv) {
     await new Promise(r => requestAnimationFrame(r));
 
     window.print();
-    styleElement.remove();
-    viewerElement.remove();
+    window.addEventListener("afterprint", () => {
+        styleElement.remove();
+        viewerElement.remove();
+    });
 }
 
 function createDownloadButton() {

@@ -2,7 +2,7 @@
 
 ![Screenshot](screenshot.png)
 
-**Extension giúp tải xuống tài liệu từ Studocu dưới dạng PDF**
+**Tiện ích giúp tải xuống tài liệu từ Studocu dưới dạng PDF**
 
 ## Tính năng
 
@@ -22,7 +22,7 @@
 
 1. Truy cập một tài liệu trên Studocu
 2. Nhấp nút **"Download as PDF"** ở bên cạnh nút **"Download"**
-3. Điều chỉnh lựa chọn in trang (nếu cầu) rồi lưu file PDF
+3. Điều chỉnh lựa chọn in trang (nếu cần) rồi lưu file PDF
 
 ## Lưu ý
 
