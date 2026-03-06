@@ -1,114 +1,160 @@
-const styleElement = document.createElement('style');
-styleElement.textContent = `body > *:not(.p2hv) {
-    display: none !important;
-}
-@media print {
-    @page {
-        margin: 0;
-        size: auto;
-    }
-    body {
-        margin: 0;
-    }
-    #page-container {
-        transform: scale(2);
-        transform-origin: top left;
-    }
-    #page-container .pf {
-        margin: 0;
-        box-shadow: none;
-        page-break-after: always;
-        break-after: always;
-        border: none;
-    }
-}`;
-const viewerElement = document.createElement('div');
-viewerElement.classList.add('p2hv');
-
+const DOWNLOAD_BUTTON_CLASS = 'studotools-download-btn';
+const PRINTING_CLASS = 'studotools-printing';
 let downloadButton;
 
-async function fetchDocument() {
-    downloadButton.textContent = 'Fetching document...';
+const sources = [
+    // Studocu
+    {
+        urlRegex: /(^|\.)((studeersnel\.nl)|(studocu\.(com|id|vn)))$/i,
+        buttonContainerClass: '.TopbarActions_secondary-actions-wrapper__4u75_',
+        buttonClass: '.Button_button__88E9y',
+        fetchDocument: async () => {
+            const { documentAccess, pageDataList } = window.__NEXT_DATA__.props.pageProps;
+            const { url, objectKey, signedQueryParams } = documentAccess;
+            const params = signedQueryParams.global;
 
-    const nextData = JSON.parse(__NEXT_DATA__.innerText);
-    const { documentAccess, pageDataList } = nextData.props.pageProps;
-    const { url, objectKey, signedQueryParams } = documentAccess;
-    const params = signedQueryParams.global;
+            const pageContent = await Promise.all(pageDataList.map(async pageData => {
+                const { pageNumber, pageHtmlWrapper } = pageData;
+                const pageUrl = `${url}${objectKey}${pageNumber}.page${params}`;
 
-    const pageContainer = document.createElement('div');
-    pageContainer.id = 'page-container';
+                const backgroundFile = `bg${pageNumber.toString(16)}.png`;
+                const backgroundUrl = `${url}${backgroundFile}${params}`;
 
-    const pageHtmls = await Promise.all(pageDataList.map(async ({ pageNumber, pageHtml, pageHtmlWrapper }) => {
-        if (!pageHtml) {
-            const pageUrl = `${url}${objectKey}${pageNumber}.page${params}`;
-            const pageResponse = await fetch(pageUrl);
-            pageHtml = await pageResponse.text();
+                const pageResponse = await fetch(pageUrl);
+                const pageText = await pageResponse.text();
+                const pageContent = pageText.replaceAll(backgroundFile, backgroundUrl);
 
-            const backgroundFile = `bg${pageNumber.toString(16)}.png`;
-            const backgroundUrl = `${url}${backgroundFile}${params}`
-            pageHtml = pageHtml.replaceAll(backgroundFile, backgroundUrl);
-        }
+                return `${pageHtmlWrapper}${pageContent}</div>`;
+            }));
 
-        return `${pageHtmlWrapper}${pageHtml}</div>`;
-    }));
-    pageContainer.innerHTML = pageHtmls.join('');
-    viewerElement.append(pageContainer);
+            const firstImageElement = document.querySelector('div[data-page-index="0"] img');
+            const scale = firstImageElement.naturalWidth / firstImageElement.clientWidth;
 
-    const pageImages = [...pageContainer.querySelectorAll('img.bi')];
-    const pageCount = pageImages.length;
-    let pageLoaded = 0;
+            return `
+<div class="p2hv" style="transform:scale(${scale});transform-origin:top left;">
+    <div id="page-container">${pageContent.join('')}</div>
+</div>
+`;
+        },
+    },
+    // Scribd
+    {
+        urlRegex: /(^|\.)scribd\.com$/i,
+        buttonContainerClass: '._12sL1I',
+        buttonClass: '.ButtonCore-module_wrapper_MkTb9s',
+        fetchDocument: async () => {
+            const { pages } = window.docManager;
 
-    downloadButton.textContent = `Loading pages: 0/${pageCount}`;
+            const pageContent = await Promise.all(Object.entries(pages).map(async ([ pageNo, pageData ]) => {
+                const { contentUrl, containerElem, origWidth, origHeight } = pageData;
 
-    await Promise.all(pageImages.map(imageElement => imageElement.decode?.()
-        .then(() => downloadButton.textContent = `Loading pages: ${++pageLoaded}/${pageCount}`)
-        .catch(() => {})
-    ));
-}
+                const pageResponse = await fetch(contentUrl);
+                const pageCode = await pageResponse.text();
+                const pageEscapedContent = pageCode.replace(`window.page${pageNo}_callback([`, '')
+                    .replace(/]\);\s*$/, '');
+                const pageContent = JSON.parse(pageEscapedContent)
+                    .replace(/orig="http:\/\/html\.scribd\.com/g, 'style="display: block;" src="https://html.scribdassets.com');
 
-async function downloadPDF() {
-    if (!viewerElement.hasChildNodes()) {
-        await fetchDocument();
+                const newContainer = containerElem.cloneNode();
+                newContainer.innerHTML = pageContent;
+                newContainer.style.width = `${origWidth}px`;
+                newContainer.style.height = `${origHeight}px`;
+
+                return newContainer.outerHTML;
+            }));
+
+            return pageContent.join('');
+        },
+    },
+];
+const source = sources.find(source => source.urlRegex.test(location.hostname));
+
+async function downloadDocument() {
+    downloadButton.textContent = 'Downloading...';
+
+    if (!document.querySelector(`.${PRINTING_CLASS}`)) {
+        const documentContent = await source.fetchDocument();
+
+        const printingElement = document.createElement('div');
+        printingElement.classList.add(PRINTING_CLASS);
+        printingElement.innerHTML = documentContent;
+        document.body.appendChild(printingElement);
+
+        const imageElements = Array.from(printingElement.querySelectorAll('img'));
+        await Promise.all(imageElements.map(imageElement => new Promise(resolve => {
+            if (imageElement.complete) {
+                resolve();
+                return;
+            }
+
+            imageElement.addEventListener('load', resolve);
+            imageElement.addEventListener('error', resolve);
+        })));
+
+        await document.fonts?.ready;
+        await new Promise(r => requestAnimationFrame(r));
     }
-
-    document.head.append(styleElement);
-    document.body.append(viewerElement);
-
-    await document.fonts?.ready;
-    await new Promise(r => requestAnimationFrame(r));
 
     window.print();
 }
 
 function createDownloadButton() {
-    const topbar = document.querySelector('div[class^="TopbarActions_secondary-actions-wrapper"]');
-    if (topbar?.querySelector('.pdf-download-btn')) {
+    const buttonContainer = document.querySelector(source.buttonContainerClass);
+    if (!buttonContainer || buttonContainer.querySelector(`.${DOWNLOAD_BUTTON_CLASS}`)) {
         return;
     }
 
     if (!downloadButton) {
-        const originalButton = topbar.querySelector('button[aria-label^="Download"]');
-        if (!originalButton) {
+        downloadButton = buttonContainer.querySelector(source.buttonClass)?.cloneNode();
+        if (!downloadButton) {
             return;
         }
 
-        downloadButton = originalButton.cloneNode(true);
-        downloadButton.classList.add('pdf-download-btn');
+        downloadButton.classList.add(DOWNLOAD_BUTTON_CLASS);
         downloadButton.textContent = 'Download as PDF';
-
-        downloadButton.addEventListener('click', downloadPDF);
+        downloadButton.addEventListener('click', downloadDocument);
+        downloadButton.disabled = false;
+        downloadButton.style.pointerEvents = 'auto';
+        downloadButton.style.cursor = 'pointer';
     }
 
-    topbar.prepend(downloadButton);
+    buttonContainer.prepend(downloadButton);
 }
 
 window.addEventListener('load', () => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+.${PRINTING_CLASS} {
+    display: none;
+}
+
+@media print {
+    @page {
+        margin: 0;
+        size: auto;
+    }
+    .${PRINTING_CLASS} {
+        display: block !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+    .${PRINTING_CLASS}, .${PRINTING_CLASS} * {
+        margin: 0;
+        visibility: visible;
+        box-shadow: none;
+        page-break-after: always;
+        break-after: always;
+        border: none;
+    }
+    body * {
+        visibility: hidden;
+    }
+}
+`;
+    document.body.appendChild(styleElement);
+
     const observer = new MutationObserver(createDownloadButton);
     observer.observe(document.body, { childList: true, subtree: true });
-});
-
-window.addEventListener("afterprint", () => {
-    styleElement.remove();
-    viewerElement.remove();
-    downloadButton.textContent = 'Download as PDF';
+    window.addEventListener('afterprint', () => { downloadButton.textContent = 'Download as PDF' });
 });

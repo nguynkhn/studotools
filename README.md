@@ -1,18 +1,20 @@
-# Studocu Tools
+# Studotools
 
 ![Screenshot](screenshot.png)
 
-**Tiện ích giúp tải xuống tài liệu từ Studocu dưới dạng PDF**
+**Tiện ích giúp tải xuống tài liệu từ Studocu/Scribd dưới dạng PDF**
+
+[Xem bản userscript ở đây](https://github.com/nguynkhn/studotools/tree/userscript)
 
 ## Tính năng
 
-- **Tải xuống PDF**: Chuyển đổi tài liệu Studocu thành tệp PDF
-- **Mở không giới hạn**: Bỏ qua giới hạn che mờ tài liệu bằng cách xóa tự động cookie giám sát
+- **Tải xuống PDF**: Chuyển đổi tài liệu Studocu/Scribd thành tệp PDF
+- **Mở không giới hạn**: Bỏ qua giới hạn che mờ tài liệu của Studocu bằng cách xóa tự động cookie giám sát
 
 ## Cách cài đặt
 
 1. Tải về [mã nguồn của extension](https://github.com/nguynkhn/studotools/releases/latest) dưới dạng tệp nén và giải nén chúng ra một thư mục riêng
-2. (Đối với các trình duyệt như Chrome, Cốc Cốc, Brave, ...)\
+2. (Đối với các trình duyệt như Chrome, Cốc Cốc, Firefox, ...)\
     Mở Settings > Extensions > Manage Extensions (hoặc mở `chrome://extensions/` trong thanh tìm kiếm)
 3. Bật **Developer mode** (góc trên bên phải)
 4. Chọn **Load unpacked** (góc trên bên trái) > Chọn thư mục dự án
